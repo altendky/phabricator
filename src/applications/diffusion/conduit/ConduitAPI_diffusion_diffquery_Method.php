@@ -118,26 +118,46 @@ final class ConduitAPI_diffusion_diffquery_Method
         break;
     }
 
-    $futures = array(
-      'old' => $this->buildSVNContentFuture($old),
-      'new' => $this->buildSVNContentFuture($new),
+    $proplistFutures = array(
+      'old' => $this->buildSVNFuture($old, 'proplist'),
+      'new' => $this->buildSVNFuture($new, 'proplist'),
     );
-    $futures = array_filter($futures);
+    $proplistFutures = array_filter($proplistFutures);
+    $proplistFutures = $this->execFutures($proplistFutures, $path);
 
-    foreach (Futures($futures) as $key => $future) {
-      $stdout = '';
-      try {
-        list($stdout) = $future->resolvex();
-      } catch (CommandException $e) {
-        if ($path->getFileType() != DifferentialChangeType::FILE_DIRECTORY) {
-          throw $e;
-        }
-      }
-      $futures[$key] = $stdout;
+    $proplistFutures['old'] = explode("\n", idx($proplistFutures, 'old', ''));
+    $proplistFutures['old'] = array_slice($proplistFutures['old'], 1);
+    $proplistFutures['old'] = array_map('trim', $proplistFutures['old']);
+    $proplistFutures['old'] = array_filter($proplistFutures['old']);
+    $proplistFutures['new'] = explode("\n", idx($proplistFutures, 'new', ''));
+    $proplistFutures['new'] = array_slice($proplistFutures['new'], 1);
+    $proplistFutures['new'] = array_map('trim', $proplistFutures['new']);
+    $proplistFutures['new'] = array_filter($proplistFutures['new']);
+
+    $contentFutures = array(
+      'old' => $this->buildSVNFuture($old, 'cat'),
+      'new' => $this->buildSVNFuture($new, 'cat'),
+    );
+    $contentFutures = array_filter($contentFutures);
+    $contentFutures = $this->execFutures($contentFutures, $path);
+
+    $propgetFutures = array(
+      'old' => array(),
+      'new' => array(),
+    );
+    foreach ($proplistFutures['old'] as $p) {
+      $propgetFutures['old'][$p] = $this->buildSVNFuture($old, 'propget '.$p);
     }
+    foreach ($proplistFutures['new'] as $p) {
+      $propgetFutures['new'][$p] = $this->buildSVNFuture($new, 'propget '.$p);
+    }
+    $propgetFutures['old'] = array_filter($propgetFutures['old']);
+    $propgetFutures['old'] = $this->execFutures($propgetFutures['old'], $path);
+    $propgetFutures['new'] = array_filter($propgetFutures['new']);
+    $propgetFutures['new'] = $this->execFutures($propgetFutures['new'], $path);
 
-    $old_data = idx($futures, 'old', '');
-    $new_data = idx($futures, 'new', '');
+    $old_data = idx($contentFutures, 'old', '');
+    $new_data = idx($contentFutures, 'new', '');
 
     $engine = new PhabricatorDifferenceEngine();
     $engine->setOldName($old_name);
@@ -154,7 +174,30 @@ final class ConduitAPI_diffusion_diffquery_Method
 
     $change = $changes[$path->getPath()];
 
+    foreach ($propgetFutures['old'] as $key => $value) {
+      $change->setOldProperty($key, $value);
+    }
+    foreach ($propgetFutures['new'] as $key => $value) {
+      $change->setNewProperty($key, $value);
+    }
+
     return array($change);
+  }
+
+  private function execFutures($futures, $path) {
+    foreach (Futures($futures) as $key => $future) {
+      $stdout = '';
+      try {
+        list($stdout) = $future->resolvex();
+      } catch (CommandException $e) {
+        if ($path->getFileType() != DifferentialChangeType::FILE_DIRECTORY) {
+          throw $e;
+        }
+      }
+      $futures[$key] = $stdout;
+    }
+
+    return $futures;
   }
 
   private function getEffectiveCommit(ConduitAPIRequest $request) {
@@ -183,7 +226,7 @@ final class ConduitAPI_diffusion_diffquery_Method
     return $this->effectiveCommit;
   }
 
-  private function buildSVNContentFuture($spec) {
+  private function buildSVNFuture($spec, $command) {
     if (!$spec) {
       return null;
     }
@@ -193,7 +236,7 @@ final class ConduitAPI_diffusion_diffquery_Method
 
     list($ref, $rev) = $spec;
     return $repository->getRemoteCommandFuture(
-      'cat %s',
+      $command.' %s',
       $repository->getSubversionPathURI($ref, $rev));
   }
 
