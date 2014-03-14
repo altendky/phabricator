@@ -118,46 +118,48 @@ final class ConduitAPI_diffusion_diffquery_Method
         break;
     }
 
-    $proplistFutures = array(
+    $proplist_futures = array(
       'old' => $this->buildSVNFuture($old, 'proplist'),
       'new' => $this->buildSVNFuture($new, 'proplist'),
     );
-    $proplistFutures = array_filter($proplistFutures);
-    $proplistFutures = $this->execFutures($proplistFutures, $path);
+    $proplist_futures = array_filter($proplist_futures);
+    $proplist_futures = $this->execFutures($proplist_futures, $path);
 
-    $proplistFutures['old'] = explode("\n", idx($proplistFutures, 'old', ''));
-    $proplistFutures['old'] = array_slice($proplistFutures['old'], 1);
-    $proplistFutures['old'] = array_map('trim', $proplistFutures['old']);
-    $proplistFutures['old'] = array_filter($proplistFutures['old']);
-    $proplistFutures['new'] = explode("\n", idx($proplistFutures, 'new', ''));
-    $proplistFutures['new'] = array_slice($proplistFutures['new'], 1);
-    $proplistFutures['new'] = array_map('trim', $proplistFutures['new']);
-    $proplistFutures['new'] = array_filter($proplistFutures['new']);
+    $proplist_futures['old'] = explode("\n", idx($proplist_futures, 'old', ''));
+    $proplist_futures['old'] = array_slice($proplist_futures['old'], 1);
+    $proplist_futures['old'] = array_map('trim', $proplist_futures['old']);
+    $proplist_futures['old'] = array_filter($proplist_futures['old']);
+    $proplist_futures['new'] = explode("\n", idx($proplist_futures, 'new', ''));
+    $proplist_futures['new'] = array_slice($proplist_futures['new'], 1);
+    $proplist_futures['new'] = array_map('trim', $proplist_futures['new']);
+    $proplist_futures['new'] = array_filter($proplist_futures['new']);
 
-    $contentFutures = array(
+    $content_futures = array(
       'old' => $this->buildSVNFuture($old, 'cat'),
       'new' => $this->buildSVNFuture($new, 'cat'),
     );
-    $contentFutures = array_filter($contentFutures);
-    $contentFutures = $this->execFutures($contentFutures, $path);
+    $content_futures = array_filter($content_futures);
+    $content_futures = $this->execFutures($content_futures, $path);
 
-    $propgetFutures = array(
+    $propget_futures = array(
       'old' => array(),
       'new' => array(),
     );
-    foreach ($proplistFutures['old'] as $p) {
-      $propgetFutures['old'][$p] = $this->buildSVNFuture($old, 'propget '.$p);
+    foreach ($proplist_futures['old'] as $p) {
+      $propget_futures['old'][$p] = $this->buildSVNFuture($old, 'propget '.$p);
     }
-    foreach ($proplistFutures['new'] as $p) {
-      $propgetFutures['new'][$p] = $this->buildSVNFuture($new, 'propget '.$p);
+    foreach ($proplist_futures['new'] as $p) {
+      $propget_futures['new'][$p] = $this->buildSVNFuture($new, 'propget '.$p);
     }
-    $propgetFutures['old'] = array_filter($propgetFutures['old']);
-    $propgetFutures['old'] = $this->execFutures($propgetFutures['old'], $path);
-    $propgetFutures['new'] = array_filter($propgetFutures['new']);
-    $propgetFutures['new'] = $this->execFutures($propgetFutures['new'], $path);
+    $propget_futures['old'] = array_filter($propget_futures['old']);
+    $propget_futures['old'] =
+      $this->execFutures($propget_futures['old'], $path);
+    $propget_futures['new'] = array_filter($propget_futures['new']);
+    $propget_futures['new'] =
+      $this->execFutures($propget_futures['new'], $path);
 
-    $old_data = idx($contentFutures, 'old', '');
-    $new_data = idx($contentFutures, 'new', '');
+    $old_data = idx($content_futures, 'old', '');
+    $new_data = idx($content_futures, 'new', '');
 
     $engine = new PhabricatorDifferenceEngine();
     $engine->setOldName($old_name);
@@ -174,10 +176,10 @@ final class ConduitAPI_diffusion_diffquery_Method
 
     $change = $changes[$path->getPath()];
 
-    foreach ($propgetFutures['old'] as $key => $value) {
+    foreach ($propget_futures['old'] as $key => $value) {
       $change->setOldProperty($key, $value);
     }
-    foreach ($propgetFutures['new'] as $key => $value) {
+    foreach ($propget_futures['new'] as $key => $value) {
       $change->setNewProperty($key, $value);
     }
 
