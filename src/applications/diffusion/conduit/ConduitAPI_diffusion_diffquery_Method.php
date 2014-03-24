@@ -118,48 +118,26 @@ final class ConduitAPI_diffusion_diffquery_Method
         break;
     }
 
-    $proplist_futures = array(
-      'old' => $this->buildSVNFuture($old, 'proplist'),
-      'new' => $this->buildSVNFuture($new, 'proplist'),
+    $futures = array(
+      'old' => $this->buildSVNContentFuture($old),
+      'new' => $this->buildSVNContentFuture($new),
     );
-    $proplist_futures = array_filter($proplist_futures);
-    $proplist_futures = $this->execFutures($proplist_futures, $path);
+    $futures = array_filter($futures);
 
-    $proplist_futures['old'] = explode("\n", idx($proplist_futures, 'old', ''));
-    $proplist_futures['old'] = array_slice($proplist_futures['old'], 1);
-    $proplist_futures['old'] = array_map('trim', $proplist_futures['old']);
-    $proplist_futures['old'] = array_filter($proplist_futures['old']);
-    $proplist_futures['new'] = explode("\n", idx($proplist_futures, 'new', ''));
-    $proplist_futures['new'] = array_slice($proplist_futures['new'], 1);
-    $proplist_futures['new'] = array_map('trim', $proplist_futures['new']);
-    $proplist_futures['new'] = array_filter($proplist_futures['new']);
-
-    $content_futures = array(
-      'old' => $this->buildSVNFuture($old, 'cat'),
-      'new' => $this->buildSVNFuture($new, 'cat'),
-    );
-    $content_futures = array_filter($content_futures);
-    $content_futures = $this->execFutures($content_futures, $path);
-
-    $propget_futures = array(
-      'old' => array(),
-      'new' => array(),
-    );
-    foreach ($proplist_futures['old'] as $p) {
-      $propget_futures['old'][$p] = $this->buildSVNFuture($old, 'propget '.$p);
+    foreach (Futures($futures) as $key => $future) {
+      $stdout = '';
+      try {
+        list($stdout) = $future->resolvex();
+      } catch (CommandException $e) {
+        if ($path->getFileType() != DifferentialChangeType::FILE_DIRECTORY) {
+          throw $e;
+        }
+      }
+      $futures[$key] = $stdout;
     }
-    foreach ($proplist_futures['new'] as $p) {
-      $propget_futures['new'][$p] = $this->buildSVNFuture($new, 'propget '.$p);
-    }
-    $propget_futures['old'] = array_filter($propget_futures['old']);
-    $propget_futures['old'] =
-      $this->execFutures($propget_futures['old'], $path);
-    $propget_futures['new'] = array_filter($propget_futures['new']);
-    $propget_futures['new'] =
-      $this->execFutures($propget_futures['new'], $path);
 
-    $old_data = idx($content_futures, 'old', '');
-    $new_data = idx($content_futures, 'new', '');
+    $old_data = idx($futures, 'old', '');
+    $new_data = idx($futures, 'new', '');
 
     $engine = new PhabricatorDifferenceEngine();
     $engine->setOldName($old_name);
@@ -176,30 +154,7 @@ final class ConduitAPI_diffusion_diffquery_Method
 
     $change = $changes[$path->getPath()];
 
-    foreach ($propget_futures['old'] as $key => $value) {
-      $change->setOldProperty($key, $value);
-    }
-    foreach ($propget_futures['new'] as $key => $value) {
-      $change->setNewProperty($key, $value);
-    }
-
     return array($change);
-  }
-
-  private function execFutures($futures, $path) {
-    foreach (Futures($futures) as $key => $future) {
-      $stdout = '';
-      try {
-        list($stdout) = $future->resolvex();
-      } catch (CommandException $e) {
-        if ($path->getFileType() != DifferentialChangeType::FILE_DIRECTORY) {
-          throw $e;
-        }
-      }
-      $futures[$key] = $stdout;
-    }
-
-    return $futures;
   }
 
   private function getEffectiveCommit(ConduitAPIRequest $request) {
@@ -228,7 +183,7 @@ final class ConduitAPI_diffusion_diffquery_Method
     return $this->effectiveCommit;
   }
 
-  private function buildSVNFuture($spec, $command) {
+  private function buildSVNContentFuture($spec) {
     if (!$spec) {
       return null;
     }
@@ -238,7 +193,7 @@ final class ConduitAPI_diffusion_diffquery_Method
 
     list($ref, $rev) = $spec;
     return $repository->getRemoteCommandFuture(
-      $command.' %s',
+      'cat %s',
       $repository->getSubversionPathURI($ref, $rev));
   }
 
