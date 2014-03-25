@@ -119,8 +119,10 @@ final class ConduitAPI_diffusion_diffquery_Method
     }
 
     $futures = array(
-      'old' => $this->buildSVNContentFuture($old),
-      'new' => $this->buildSVNContentFuture($new),
+      'old_content' => $this->buildSVNContentFuture($old),
+      'new_content' => $this->buildSVNContentFuture($new),
+      'old_properties' => $this->buildSVNPropertiesFuture($old),
+      'new_properties' => $this->buildSVNPropertiesFuture($new),
     );
     $futures = array_filter($futures);
 
@@ -136,8 +138,8 @@ final class ConduitAPI_diffusion_diffquery_Method
       $futures[$key] = $stdout;
     }
 
-    $old_data = idx($futures, 'old', '');
-    $new_data = idx($futures, 'new', '');
+    $old_data = idx($futures, 'old_content', '');
+    $new_data = idx($futures, 'new_content', '');
 
     $engine = new PhabricatorDifferenceEngine();
     $engine->setOldName($old_name);
@@ -153,6 +155,22 @@ final class ConduitAPI_diffusion_diffquery_Method
     $changes = $parser->parseDiff($raw_diff);
 
     $change = $changes[$path->getPath()];
+
+    $prop_parser = $this->getDefaultParser();
+    if (!empty($futures['old_properties'])) {
+      $old_properties = $prop_parser->parseDiff($futures['old_properties']);
+      $old_properties = reset(array_values($old_properties));
+      foreach ($old_properties->getNewProperties() as $key => $value) {
+        $change->setOldProperty($key, $value);
+      }
+    }
+    if (!empty($futures['new_properties'])) {
+      $new_properties = $prop_parser->parseDiff($futures['new_properties']);
+      $new_properties = reset(array_values($new_properties));
+      foreach ($new_properties->getNewProperties() as $key => $value) {
+        $change->setNewProperty($key, $value);
+      }
+    }
 
     return array($change);
   }
@@ -194,6 +212,21 @@ final class ConduitAPI_diffusion_diffquery_Method
     list($ref, $rev) = $spec;
     return $repository->getRemoteCommandFuture(
       'cat %s',
+      $repository->getSubversionPathURI($ref, $rev));
+  }
+
+  private function buildSVNPropertiesFuture($spec) {
+    if (!$spec) {
+      return null;
+    }
+
+    $drequest = $this->getDiffusionRequest();
+    $repository = $drequest->getRepository();
+
+    list($ref, $rev) = $spec;
+    return $repository->getRemoteCommandFuture(
+      'diff -r 0:%s --depth empty %s',
+      $rev,
       $repository->getSubversionPathURI($ref, $rev));
   }
 
